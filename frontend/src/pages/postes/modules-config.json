@@ -1,0 +1,160 @@
+{
+  "erp_modules": {
+    "gestion_stock": {
+      "name": "Gestion de Stock",
+      "description": "Stock management module",
+      "actions": [
+        {
+          "id": "create_category",
+          "name": "Créer Catégorie",
+          "description": "Create new product category",
+          "component": "CategoryManagement"
+        },
+        {
+          "id": "validate_category",
+          "name": "Valider Catégorie",
+          "description": "Validate pending categories",
+          "component": "CategoryManagement"
+        },
+        {
+          "id": "delete_category",
+          "name": "Supprimer Catégorie",
+          "description": "Delete existing category",
+          "component": "CategoryManagement"
+        },
+        {
+          "id": "create_product",
+          "name": "Créer Produit",
+          "description": "Create new product",
+          "component": "ProductManagement"
+        },
+        {
+          "id": "validate_product",
+          "name": "Valider Produit",
+          "description": "Validate pending products",
+          "component": "ProductManagement"
+        },
+        {
+          "id": "delete_product",
+          "name": "Supprimer Produit",
+          "description": "Delete existing product",
+          "component": "ProductManagement"
+        },
+        {
+          "id": "manage_stock",
+          "name": "Gérer Stock",
+          "description": "Manage stock levels and movements",
+          "component": "StockManagement"
+        },
+        {
+          "id": "view_stock_reports",
+          "name": "Voir Rapports Stock",
+          "description": "View stock reports and analytics",
+          "component": "StockManagement"
+        },
+        {
+          "id": "create_supplier",
+          "name": "Créer Fournisseur",
+          "description": "Create new supplier",
+          "component": "SupplierManagement"
+        },
+        {
+          "id": "manage_suppliers",
+          "name": "Gérer Fournisseurs",
+          "description": "Manage supplier information",
+          "component": "SupplierManagement"
+        },
+        {
+          "id": "create_purchase_request",
+          "name": "Créer Demande Achat",
+          "description": "Create purchase request",
+          "component": "PurchaseRequestManagement"
+        },
+        {
+          "id": "validate_purchase_request",
+          "name": "Valider Demande Achat",
+          "description": "Validate purchase requests",
+          "component": "PurchaseRequestManagement"
+        },
+        {
+          "id": "create_purchase_order",
+          "name": "Créer Bon Commande",
+          "description": "Create purchase order",
+          "component": "PurchaseOrderManagement"
+        },
+        {
+          "id": "validate_purchase_order",
+          "name": "Valider Bon Commande",
+          "description": "Validate purchase orders",
+          "component": "PurchaseOrderManagement"
+        },
+        {
+          "id": "manage_magasin",
+          "name": "Gérer Magasin",
+          "description": "Manage store/warehouse information",
+          "component": "MagasinManagement"
+        },
+        {
+          "id": "manage_permissions_stock",
+          "name": "Gérer Permissions",
+          "description": "Manage permissions for stock module",
+          "component": "PermissionsManagement"
+        }
+      ]
+    },
+    "gestion_financiere": {
+      "name": "Gestion Financière",
+      "description": "Financial management module",
+      "actions": [
+        {
+          "id": "view_financial_reports",
+          "name": "Voir Rapports Financiers",
+          "description": "View financial reports and statements"
+        },
+        {
+          "id": "manage_budgets",
+          "name": "Gérer Budgets",
+          "description": "Manage budgets and forecasts"
+        },
+        {
+          "id": "process_payments",
+          "name": "Traiter Paiements",
+          "description": "Process payments and transactions"
+        },
+        {
+          "id": "manage_permissions_finance",
+          "name": "Gérer Permissions",
+          "description": "Manage permissions for financial module",
+          "component": "PermissionsManagement"
+        }
+      ]
+    },
+    "gestion_rh": {
+      "name": "Gestion Ressources Humaines",
+      "description": "Human resources management module",
+      "actions": [
+        {
+          "id": "manage_employees",
+          "name": "Gérer Employés",
+          "description": "Manage employee information"
+        },
+        {
+          "id": "manage_payroll",
+          "name": "Gérer Paie",
+          "description": "Manage payroll and salaries"
+        },
+        {
+          "id": "manage_attendance",
+          "name": "Gérer Présence",
+          "description": "Manage employee attendance"
+        },
+        {
+          "id": "manage_permissions_rh",
+          "name": "Gérer Permissions",
+          "description": "Manage permissions for HR module",
+          "component": "PermissionsManagement"
+        }
+      ]
+    }
+  }
+}

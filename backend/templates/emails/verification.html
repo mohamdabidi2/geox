@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Verify Your Email</title>
+    <style>
+        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+        .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+        .header { background: #007bff; color: white; padding: 20px; text-align: center; }
+        .content { background: #f9f9f9; padding: 30px; }
+        .button { display: inline-block; padding: 12px 24px; background: #007bff; color: white; text-decoration: none; border-radius: 4px; }
+        .footer { text-align: center; margin-top: 20px; color: #666; font-size: 14px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Email Verification</h1>
+        </div>
+        <div class="content">
+            <h2>Hello,</h2>
+            <p>Thank you for creating an account. Please verify your email address by clicking the button below:</p>
+            
+            <p style="text-align: center; margin: 30px 0;">
+                <a href="{{verificationLink}}" class="button">Verify Email Address</a>
+            </p>
+
+            <p>Or copy and paste this link into your browser:</p>
+            <p style="word-break: break-all; background: #eee; padding: 10px; border-radius: 4px;">
+                {{verificationLink}}
+            </p>
+
+            <p>This verification link will expire in 24 hours.</p>
+            
+            <p>If you didn't create an account with us, please ignore this email.</p>
+        </div>
+        <div class="footer">
+            <p>If you have any questions, contact our support team at <a href="mailto:{{supportEmail}}">{{supportEmail}}</a></p>
+            <p>&copy; 2024 Your Company. All rights reserved.</p>
+        </div>
+    </div>
+</body>
+</html>
