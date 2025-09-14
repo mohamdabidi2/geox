@@ -8,10 +8,14 @@ const PostPermissionModal = ({ post, modulesConfig, onClose, onSave }) => {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    // Initialiser les actions sélectionnées à partir du poste
-    if (post && post.actions) {
-      setSelectedActions(post.actions);
+    // Extract permissions from the actions object
+    if (post && post.actions && post.actions.permissions) {
+      setSelectedActions(post.actions.permissions);
+    } else if (post && post.actions) {
+      // Handle case where actions might be an array directly
+      setSelectedActions(Array.isArray(post.actions) ? post.actions : []);
     }
+    
     // Déplier tous les modules par défaut
     const modules = Object.keys(modulesConfig.erp_modules);
     const expanded = {};

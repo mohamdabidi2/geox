@@ -69,8 +69,8 @@ const EnhancedSidebar = ({ logoUrl, navigationItems, supportItems, onLogout }) =
   return (
     <div className="w-72 bg-white shadow-lg border-r border-gray-200 flex flex-col h-screen fixed left-0 top-0">
       {/* Logo */}
-      <div className="p-6 border-b border-gray-200">
-        <img src={logoUrl} alt="Logo" className="h-8" />
+      <div style={{background:"#3c518f98",display:"flex",justifyContent:"center"}}  className="p-6 border-b border-gray-200">
+        <img src={logoUrl} style={{width:"50%",height:"auto"}}  alt="Logo" className="h-8" />
       </div>
 
       {/* Navigation */}

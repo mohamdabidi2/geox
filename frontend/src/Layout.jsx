@@ -88,7 +88,7 @@ const Layout = ({ children }) => {
       {
         icon: Grid3X3,
         label: 'Gestion Stock & Achats',
-        path: '#', // Use '#' for parent items that are collapsible
+        
         active: stockPaths.includes(currentPath),
         onClick: (e) => {
           e.preventDefault();

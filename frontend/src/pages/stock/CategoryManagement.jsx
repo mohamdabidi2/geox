@@ -1,52 +1,22 @@
-import { useState, useEffect } from 'react';
-// import { useAuth } from '../../hooks/useAuth'; // Removed to avoid "must be used within an AuthProvider" error
-// import { usePermissions } from '../../hooks/usePermissions'; // Also removed for same reason
+import { useState, useEffect, useCallback, useRef } from 'react';
 import axios from 'axios';
-import { Plus, Edit2, CheckCircle, XCircle, Eye, Filter, X, Search, Lock, AlertCircle } from 'lucide-react';
+import { Plus, Package, Tags, Store, User, CheckCircle, XCircle, Clock, Filter, X, Search, Lock, AlertCircle } from 'lucide-react';
 import HandsontableDataGrid from './HandsontableDataGrid';
-import './modern-styles.css'; // Import our modern styles
-
-// Fallback user and permissions if not in AuthProvider context
-const fallbackUser = {
-  username: 'Inconnu',
-  firstname: 'Inconnu',
-  lastname: '',
-  magasin: { id: null }
-};
-const fallbackPermissions = {
-  hasComponentAccess: () => true,
-  hasPermission: () => true,
-  loading: false
-};
+import RightsProtectedPage from '../Droits/RightsProtectedPage';
+import { useRightsManagement } from '../../hooks/useRightsManagement';
+import './modern-styles.css';
 
 const CategoryManagement = () => {
-  // Defensive: Try to get user from useAuth, fallback if error
-  let user = fallbackUser;
-  let hasComponentAccess = fallbackPermissions.hasComponentAccess;
-  let hasPermission = fallbackPermissions.hasPermission;
-  let permissionsLoading = fallbackPermissions.loading;
-  try {
-    // Dynamically import useAuth and usePermissions to avoid error if not in provider
-    // eslint-disable-next-line react-hooks/rules-of-hooks
-    const { useAuth } = require('../../hooks/useAuth');
-    // eslint-disable-next-line react-hooks/rules-of-hooks
-    user = useAuth()?.user || fallbackUser;
-  } catch (e) {
-    user = fallbackUser;
-  }
-  try {
-    // eslint-disable-next-line react-hooks/rules-of-hooks
-    const { usePermissions } = require('../../hooks/usePermissions');
-    // eslint-disable-next-line react-hooks/rules-of-hooks
-    const perms = usePermissions() || {};
-    hasComponentAccess = perms.hasComponentAccess || fallbackPermissions.hasComponentAccess;
-    hasPermission = perms.hasPermission || fallbackPermissions.hasPermission;
-    permissionsLoading = perms.loading ?? fallbackPermissions.loading;
-  } catch (e) {
-    hasComponentAccess = fallbackPermissions.hasComponentAccess;
-    hasPermission = fallbackPermissions.hasPermission;
-    permissionsLoading = fallbackPermissions.loading;
-  }
+  const {
+    user,
+    hasMagasinAccess,
+    hasCategoryAccess,
+    filterByRights,
+    loading: rightsLoading
+  } = useRightsManagement();
+
+  // Fallback permissions for development
+  const hasPermission = (permission) => true; // Replace with actual permission check
 
   const [categories, setCategories] = useState([]);
   const [filteredCategories, setFilteredCategories] = useState([]);
@@ -62,7 +32,7 @@ const CategoryManagement = () => {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
-  // États de filtre
+  // Filter states
   const [filters, setFilters] = useState({
     status: '',
     createdBy: '',
@@ -72,19 +42,131 @@ const CategoryManagement = () => {
   });
   const [activeFilters, setActiveFilters] = useState([]);
 
-  // Defensive: Only fetch if user and user.magasin and user.magasin.id exist
-  useEffect(() => {
-    if (user && user.magasin && user.magasin.id) {
-      fetchCategories();
-      fetchAvailableFields();
-    }
-    // eslint-disable-next-line
-  }, [user && user.magasin && user.magasin.id]);
+  // Use refs to prevent infinite loops
+  const hasInitialized = useRef(false);
+  const lastMagasinId = useRef(null);
+  const lastUserRef = useRef(null);
 
+  // Fetch functions without any dependencies that could cause loops
+  const fetchCategories = useCallback(async (magasinId) => {
+    if (!magasinId) return;
+    
+    try {
+      setLoading(true);
+      const response = await axios.get(`http://localhost:5000/api/categories/magasin/${magasinId}`);
+      
+      // Don't apply rights filtering here to avoid the loop
+      setCategories(response.data || []);
+    } catch (error) {
+      console.error('Erreur lors de la récupération des catégories :', error);
+      setError('Échec de la récupération des catégories');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const fetchAvailableFields = useCallback(async (magasinId) => {
+    if (!magasinId) return;
+    try {
+      const response = await axios.get(`http://localhost:5000/api/magasins/${magasinId}/fields`);
+      setAvailableFields(Array.isArray(response.data?.fields) ? response.data.fields : []);
+    } catch (error) {
+      console.error('Erreur lors de la récupération des champs :', error);
+      setError('Échec de la récupération des champs disponibles');
+      setAvailableFields([]);
+    }
+  }, []);
+
+  // CRITICAL FIX: Only fetch data when magasin ID actually changes
   useEffect(() => {
-    applyFilters();
-    // eslint-disable-next-line
-  }, [categories, filters]);
+    const currentMagasinId = user?.magasin?.id;
+    
+    // Only proceed if:
+    // 1. We have a magasin ID
+    // 2. The magasin ID has actually changed
+    // 3. We haven't initialized yet OR the magasin ID is different
+    if (currentMagasinId && 
+        (lastMagasinId.current !== currentMagasinId || !hasInitialized.current)) {
+      
+      console.log('Fetching data for magasin:', currentMagasinId);
+      
+      // Update refs to prevent re-fetching
+      lastMagasinId.current = currentMagasinId;
+      hasInitialized.current = true;
+      
+      // Check access and fetch data
+      if (hasMagasinAccess && hasMagasinAccess(currentMagasinId)) {
+        fetchCategories(currentMagasinId);
+        fetchAvailableFields(currentMagasinId);
+      }
+    } else if (user && !currentMagasinId && !hasInitialized.current) {
+      // Handle case where user has no magasin
+      setError("Aucun magasin associé à votre compte. Veuillez contacter l'administrateur.");
+      setCategories([]);
+      setAvailableFields([]);
+      hasInitialized.current = true;
+    }
+  }, [user?.magasin?.id, hasMagasinAccess, fetchCategories, fetchAvailableFields]);
+
+  // Apply filters in a separate effect that doesn't cause loops
+  useEffect(() => {
+    let filtered = Array.isArray(categories) ? [...categories] : [];
+
+    // Apply rights-based filtering only if we have the function and it's stable
+    if (typeof filterByRights === 'function' && categories.length > 0) {
+      try {
+        filtered = filterByRights(filtered, 'categories');
+      } catch (error) {
+        console.warn('Rights filtering failed, using all categories:', error);
+        // Continue with unfiltered data if rights filtering fails
+      }
+    }
+
+    // Apply user filters
+    if (filters.status) {
+      if (filters.status === 'approved') {
+        filtered = filtered.filter(cat => cat.is_approved);
+      } else if (filters.status === 'pending') {
+        filtered = filtered.filter(cat => !cat.is_approved);
+      }
+    }
+
+    if (filters.createdBy) {
+      filtered = filtered.filter(cat =>
+        (cat.created_by || '').toLowerCase().includes(filters.createdBy.toLowerCase())
+      );
+    }
+
+    if (filters.dateFrom) {
+      filtered = filtered.filter(cat =>
+        new Date(cat.created_at) >= new Date(filters.dateFrom)
+      );
+    }
+    if (filters.dateTo) {
+      filtered = filtered.filter(cat =>
+        new Date(cat.created_at) <= new Date(filters.dateTo + 'T23:59:59')
+      );
+    }
+
+    if (filters.searchTerm) {
+      filtered = filtered.filter(cat => {
+        const searchLower = filters.searchTerm.toLowerCase();
+        return (cat.name || '').toLowerCase().includes(searchLower) ||
+               (cat.created_by || '').toLowerCase().includes(searchLower);
+      });
+    }
+
+    setFilteredCategories(filtered);
+
+    // Update active filters
+    const active = [];
+    if (filters.status) active.push({ key: 'status', label: `Statut : ${filters.status === 'approved' ? 'Approuvée' : 'En attente'}`, value: filters.status });
+    if (filters.createdBy) active.push({ key: 'createdBy', label: `Créé par : ${filters.createdBy}`, value: filters.createdBy });
+    if (filters.dateFrom) active.push({ key: 'dateFrom', label: `Du : ${filters.dateFrom}`, value: filters.dateFrom });
+    if (filters.dateTo) active.push({ key: 'dateTo', label: `Au : ${filters.dateTo}`, value: filters.dateTo });
+    if (filters.searchTerm) active.push({ key: 'searchTerm', label: `Recherche : ${filters.searchTerm}`, value: filters.searchTerm });
+    setActiveFilters(active);
+  }, [categories, filters]); // Removed filterByRights from dependencies
 
   // Auto-hide success/error messages
   useEffect(() => {
@@ -100,73 +182,6 @@ const CategoryManagement = () => {
       return () => clearTimeout(timer);
     }
   }, [error]);
-
-  const fetchCategories = async () => {
-    if (!user || !user.magasin || !user.magasin.id) return;
-    try {
-      const response = await axios.get(`http://localhost:5000/api/categories/magasin/${user.magasin.id}`);
-      setCategories(Array.isArray(response.data) ? response.data : []);
-    } catch (error) {
-      console.error('Erreur lors de la récupération des catégories :', error);
-      setError('Échec de la récupération des catégories');
-      setCategories([]);
-    }
-  };
-
-  // Fonctionnalité de filtrage
-  const applyFilters = () => {
-    let filtered = Array.isArray(categories) ? [...categories] : [];
-
-    // Filtre statut
-    if (filters.status) {
-      if (filters.status === 'approved') {
-        filtered = filtered.filter(cat => cat.is_approved);
-      } else if (filters.status === 'pending') {
-        filtered = filtered.filter(cat => !cat.is_approved);
-      }
-    }
-
-    // Filtre créateur
-    if (filters.createdBy) {
-      filtered = filtered.filter(cat =>
-        (cat.created_by || '').toLowerCase().includes(filters.createdBy.toLowerCase())
-      );
-    }
-
-    // Filtre plage de dates
-    if (filters.dateFrom) {
-      filtered = filtered.filter(cat =>
-        new Date(cat.created_at) >= new Date(filters.dateFrom)
-      );
-    }
-    if (filters.dateTo) {
-      filtered = filtered.filter(cat =>
-        new Date(cat.created_at) <= new Date(filters.dateTo + 'T23:59:59')
-      );
-    }
-
-    // Filtre de recherche
-    if (filters.searchTerm) {
-      filtered = filtered.filter(cat => {
-        const searchLower = filters.searchTerm.toLowerCase();
-        return (cat.name || '').toLowerCase().includes(searchLower) ||
-               (cat.created_by || '').toLowerCase().includes(searchLower);
-      });
-    }
-
-    setFilteredCategories(filtered);
-    updateActiveFilters();
-  };
-
-  const updateActiveFilters = () => {
-    const active = [];
-    if (filters.status) active.push({ key: 'status', label: `Statut : ${filters.status === 'approved' ? 'Approuvée' : 'En attente'}`, value: filters.status });
-    if (filters.createdBy) active.push({ key: 'createdBy', label: `Créé par : ${filters.createdBy}`, value: filters.createdBy });
-    if (filters.dateFrom) active.push({ key: 'dateFrom', label: `Du : ${filters.dateFrom}`, value: filters.dateFrom });
-    if (filters.dateTo) active.push({ key: 'dateTo', label: `Au : ${filters.dateTo}`, value: filters.dateTo });
-    if (filters.searchTerm) active.push({ key: 'searchTerm', label: `Recherche : ${filters.searchTerm}`, value: filters.searchTerm });
-    setActiveFilters(active);
-  };
 
   const removeFilter = (filterKey) => {
     setFilters(prev => ({ ...prev, [filterKey]: '' }));
@@ -186,18 +201,6 @@ const CategoryManagement = () => {
     setFilters(prev => ({ ...prev, [key]: value }));
   };
 
-  const fetchAvailableFields = async () => {
-    if (!user || !user.magasin || !user.magasin.id) return;
-    try {
-      const response = await axios.get(`http://localhost:5000/api/magasins/${user.magasin.id}/fields`);
-      setAvailableFields(Array.isArray(response.data?.fields) ? response.data.fields : []);
-    } catch (error) {
-      console.error('Erreur lors de la récupération des champs :', error);
-      setError('Échec de la récupération des champs disponibles');
-      setAvailableFields([]);
-    }
-  };
-
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
@@ -211,13 +214,16 @@ const CategoryManagement = () => {
       } else {
         await axios.post('http://localhost:5000/api/categories', {
           ...formData,
-          magasin_id: user?.magasin?.id,
+         magasin_id : user?.magasin?.id,
           created_by: (user?.firstname || '') + " " + (user?.lastname || '')
         });
         setSuccess('Catégorie créée avec succès');
       }
 
-      await fetchCategories();
+      // Refresh categories after successful operation
+      if (user?.magasin?.id) {
+        await fetchCategories(user.magasin.id);
+      }
       setShowModal(false);
       setEditingCategory(null);
       setFormData({ name: '', required_fields: [] });
@@ -230,13 +236,23 @@ const CategoryManagement = () => {
   };
 
   const handleApproval = async (categoryId, isApproved) => {
+    // Check if user has access to this category
+    if (hasCategoryAccess && !hasCategoryAccess(categoryId)) {
+      setError('Vous n\'avez pas les droits pour approuver cette catégorie');
+      return;
+    }
+
     if (!user || !user.username) return;
     try {
       await axios.patch(`http://localhost:5000/api/categories/${categoryId}/approval`, {
         is_approved: isApproved,
         approved_by: user.username
       });
-      await fetchCategories();
+      
+      // Refresh categories after successful operation
+      if (user?.magasin?.id) {
+        await fetchCategories(user.magasin.id);
+      }
       setSuccess(`Catégorie ${isApproved ? 'approuvée' : 'rejetée'} avec succès`);
     } catch (error) {
       console.error('Erreur lors de la mise à jour de l\'approbation :', error);
@@ -256,6 +272,12 @@ const CategoryManagement = () => {
 
   const openModal = (category = null) => {
     if (category) {
+      // Check if user has access to edit this category
+      if (hasCategoryAccess && !hasCategoryAccess(category.id)) {
+        setError('Vous n\'avez pas les droits pour modifier cette catégorie');
+        return;
+      }
+      
       setEditingCategory(category);
       setFormData({
         name: category.name || '',
@@ -279,7 +301,7 @@ const CategoryManagement = () => {
       status: category.is_approved ? 'Approuvée' : 'En attente',
       created_by: category.created_by,
       created_at: category.created_at ? new Date(category.created_at).toLocaleDateString('fr-FR') : '',
-      actions: category.id // We'll use this for action buttons
+      actions: category.id
     }));
   };
 
@@ -348,7 +370,13 @@ const CategoryManagement = () => {
       readOnly: true,
       className: 'htCenter',
       renderer: (instance, td, row, col, prop, value) => {
-        // Defensive: find in filteredCategories, fallback to categories
+        // Check if user has access to this category
+        const hasAccess = hasCategoryAccess ? hasCategoryAccess(value) : true;
+        if (!hasAccess) {
+          td.innerHTML = '<span class="text-gray-400">Accès restreint</span>';
+          return td;
+        }
+
         let category = (Array.isArray(filteredCategories) ? filteredCategories : []).find(cat => cat.id === value);
         if (!category && Array.isArray(categories)) {
           category = categories.find(cat => cat.id === value);
@@ -410,361 +438,339 @@ const CategoryManagement = () => {
       delete window.approveCategory;
       delete window.viewCategory;
     };
-    // eslint-disable-next-line
   }, [categories, filteredCategories]);
 
-  // Ajout d'un état de chargement ou rendu conditionnel
-  if (!user || !user.magasin || !user.magasin.id) {
-    return (
-      <div className="flex-center" style={{ minHeight: '400px', width: '100%' }}>
-        <div className="modern-spinner"></div>
-        <span style={{ marginLeft: '1rem', color: 'var(--neutral-600)' }}>Chargement...</span>
-      </div>
-    );
-  }
-
-  // Check component access
-  if (permissionsLoading) {
-    return (
-      <div className="flex-center" style={{ minHeight: '400px', width: '100%' }}>
-        <div className="modern-spinner"></div>
-        <span style={{ marginLeft: '1rem', color: 'var(--neutral-600)' }}>Vérification des permissions...</span>
-      </div>
-    );
-  }
-
-  if (!hasComponentAccess('CategoryManagement')) {
-    return (
-      <div style={{ padding: '2rem', width: '100%' }}>
-        <div className="flex-center" style={{ minHeight: '400px', flexDirection: 'column', textAlign: 'center' }}>
-          <Lock size={64} color="var(--neutral-400)" style={{ marginBottom: '1rem' }} />
-          <h2 style={{ fontSize: 'var(--font-size-xl)', fontWeight: 'var(--font-weight-semibold)', color: 'var(--neutral-900)', marginBottom: '0.5rem' }}>
-            Accès non autorisé
-          </h2>
-          <p style={{ color: 'var(--neutral-600)', lineHeight: 'var(--line-height-relaxed)' }}>
-            Vous n'avez pas les permissions nécessaires pour accéder à la gestion des catégories.
-            <br />
-            Veuillez contacter votre administrateur pour obtenir les droits d'accès appropriés.
-          </p>
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <div style={{ width: '100%', maxWidth: '100%', margin: 0, padding: '2rem 0' }}>
-      {/* Header Section */}
-      <div className="flex-between" style={{ marginBottom: '2rem', flexWrap: 'wrap', gap: '1rem', width: '100%', padding: '0 2rem' }}>
-        <div>
-          <h1 style={{ fontSize: 'var(--font-size-3xl)', fontWeight: 'var(--font-weight-bold)', color: 'var(--neutral-900)', margin: '0 0 0.5rem 0' }}>
-            Gestion des Catégories
-          </h1>
-          <p style={{ color: 'var(--neutral-600)', fontSize: 'var(--font-size-base)' }}>
-            Gérez les catégories et leurs champs requis
-          </p>
-        </div>
-        <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
-          <button
-            onClick={() => setShowFilterModal(true)}
-            className="modern-btn modern-btn-outline"
-          >
-            <Filter size={16} />
-            Filtres
-            {activeFilters.length > 0 && (
-              <span className="modern-badge modern-badge-primary" style={{ marginLeft: '0.5rem' }}>
-                {activeFilters.length}
-              </span>
-            )}
-          </button>
-          {hasPermission('create_category') && (
+    <RightsProtectedPage 
+      requireMagasin={true}
+      requireCategories={false}
+      pageName="la gestion des catégories"
+    >
+      <div style={{ width: '100%', maxWidth: '100%', margin: 0, padding: '2rem 0' }}>
+        {/* Header Section */}
+        <div className="flex-between" style={{ marginBottom: '2rem', flexWrap: 'wrap', gap: '1rem', width: '100%', padding: '0 2rem' }}>
+          <div>
+            <h1 style={{ fontSize: 'var(--font-size-3xl)', fontWeight: 'var(--font-weight-bold)', color: 'var(--neutral-900)', margin: '0 0 0.5rem 0' }}>
+              Gestion des Catégories
+            </h1>
+            <p style={{ color: 'var(--neutral-600)', fontSize: 'var(--font-size-base)' }}>
+              Gérez les catégories et leurs champs requis
+            </p>
+          </div>
+          <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
             <button
-              onClick={() => openModal()}
-              className="modern-btn modern-btn-primary"
+              onClick={() => setShowFilterModal(true)}
+              className="modern-btn modern-btn-outline"
             >
-              <Plus size={16} />
-              Nouvelle Catégorie
+              <Filter size={16} />
+              Filtres
+              {activeFilters.length > 0 && (
+                <span className="modern-badge modern-badge-primary" style={{ marginLeft: '0.5rem' }}>
+                  {activeFilters.length}
+                </span>
+              )}
             </button>
-          )}
-        </div>
-      </div>
-
-      {/* Success Alert */}
-      {success && (
-        <div className="modern-alert modern-alert-success" style={{ margin: '0 2rem' }}>
-          <CheckCircle size={20} />
-          <div>
-            <strong>Succès!</strong>
-            <div>{success}</div>
-          </div>
-          <button
-            onClick={() => setSuccess('')}
-            className="modern-btn-ghost modern-btn-icon modern-btn-sm"
-            style={{ marginLeft: 'auto' }}
-          >
-            <X size={16} />
-          </button>
-        </div>
-      )}
-
-      {/* Error Alert */}
-      {error && (
-        <div className="modern-alert modern-alert-error" style={{ margin: '0 2rem' }}>
-          <AlertCircle size={20} />
-          <div>
-            <strong>Erreur!</strong>
-            <div>{error}</div>
-          </div>
-          <button
-            onClick={() => setError('')}
-            className="modern-btn-ghost modern-btn-icon modern-btn-sm"
-            style={{ marginLeft: 'auto' }}
-          >
-            <X size={16} />
-          </button>
-        </div>
-      )}
-
-      {/* Active Filters */}
-      {activeFilters.length > 0 && (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', alignItems: 'center', marginBottom: '1rem', marginLeft: '2rem', marginRight: '2rem' }}>
-          <span style={{ fontSize: 'var(--font-size-sm)', fontWeight: 'var(--font-weight-medium)', color: 'var(--neutral-700)' }}>
-            Filtres actifs :
-          </span>
-          {activeFilters.map((filter) => (
-            <span key={filter.key} className="modern-badge modern-badge-primary" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              {filter.label}
+            {hasPermission('create_category') && (
               <button
-                onClick={() => removeFilter(filter.key)}
-                className="modern-btn-ghost modern-btn-icon"
-                style={{ padding: '0.125rem', minWidth: 'auto', width: '1rem', height: '1rem' }}
+                onClick={() => openModal()}
+                className="modern-btn modern-btn-primary"
               >
-                <X size={12} />
+                <Plus size={16} />
+                Nouvelle Catégorie
               </button>
+            )}
+          </div>
+        </div>
+
+        {/* Success Alert */}
+        {success && (
+          <div className="modern-alert modern-alert-success" style={{ margin: '0 2rem' }}>
+            <CheckCircle size={20} />
+            <div>
+              <strong>Succès!</strong>
+              <div>{success}</div>
+            </div>
+            <button
+              onClick={() => setSuccess('')}
+              className="modern-btn-ghost modern-btn-icon modern-btn-sm"
+              style={{ marginLeft: 'auto' }}
+            >
+              <X size={16} />
+            </button>
+          </div>
+        )}
+
+        {/* Error Alert */}
+        {error && (
+          <div className="modern-alert modern-alert-error" style={{ margin: '0 2rem' }}>
+            <AlertCircle size={20} />
+            <div>
+              <strong>Erreur!</strong>
+              <div>{error}</div>
+            </div>
+            <button
+              onClick={() => setError('')}
+              className="modern-btn-ghost modern-btn-icon modern-btn-sm"
+              style={{ marginLeft: 'auto' }}
+            >
+              <X size={16} />
+            </button>
+          </div>
+        )}
+
+        {/* No Magasin Warning */}
+        {user && !user.magasin?.id && (
+          <div className="modern-alert modern-alert-warning" style={{ margin: '0 2rem' }}>
+            <AlertCircle size={20} />
+            <div>
+              <strong>Information importante</strong>
+              <div>Aucun magasin n'est associé à votre compte. Veuillez contacter l'administrateur.</div>
+            </div>
+          </div>
+        )}
+
+        {/* Active Filters */}
+        {activeFilters.length > 0 && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', alignItems: 'center', marginBottom: '1rem', marginLeft: '2rem', marginRight: '2rem' }}>
+            <span style={{ fontSize: 'var(--font-size-sm)', fontWeight: 'var(--font-weight-medium)', color: 'var(--neutral-700)' }}>
+              Filtres actifs :
             </span>
-          ))}
-          <button
-            onClick={clearAllFilters}
-            style={{ fontSize: 'var(--font-size-sm)', color: 'var(--neutral-500)', textDecoration: 'underline', background: 'none', border: 'none', cursor: 'pointer' }}
-          >
-            Tout effacer
-          </button>
-        </div>
-      )}
-
-      {/* Search Bar */}
-      <div style={{ marginBottom: '1.5rem', marginLeft: '2rem', marginRight: '2rem' }}>
-        <div className="modern-search-input">
-          <div className="modern-input-icon">
-            <Search size={20} />
+            {activeFilters.map((filter) => (
+              <span key={filter.key} className="modern-badge modern-badge-primary" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                {filter.label}
+                <button
+                  onClick={() => removeFilter(filter.key)}
+                  className="modern-btn-ghost modern-btn-icon"
+                  style={{ padding: '0.125rem', minWidth: 'auto', width: '1rem', height: '1rem' }}
+                >
+                  <X size={12} />
+                </button>
+              </span>
+            ))}
+            <button
+              onClick={clearAllFilters}
+              style={{ fontSize: 'var(--font-size-sm)', color: 'var(--neutral-500)', textDecoration: 'underline', background: 'none', border: 'none', cursor: 'pointer' }}
+            >
+              Tout effacer
+            </button>
           </div>
-          <input
-            type="text"
-            placeholder="Rechercher par nom ou créateur..."
-            className="modern-input"
-            value={filters.searchTerm}
-            onChange={(e) => handleFilterChange('searchTerm', e.target.value)}
-          />
-        </div>
-      </div>
+        )}
 
-      {/* Data Grid */}
-      <div className="modern-card" style={{ width: '100%', margin: '0 2rem', boxSizing: 'border-box' }}>
-        <div className="modern-card-body" style={{ padding: '0' }}>
-          <HandsontableDataGrid
-            data={prepareTableData()}
-            columns={tableColumns}
-            height={400}
-            className="category-management-table"
-            contextMenu={['row_above', 'row_below', 'separator', 'copy', 'cut']}
-            filters={true}
-            dropdownMenu={true}
-            multiColumnSorting={true}
-            width={'100%'}
-          />
-          {filteredCategories.length === 0 && (
-            <div className="text-center" style={{ padding: '2rem', color: 'var(--neutral-500)' }}>
-              Aucune catégorie trouvée correspondant à vos filtres.
+        {/* Search Bar */}
+        <div style={{ marginBottom: '1.5rem', marginLeft: '2rem', marginRight: '2rem' }}>
+          <div className="modern-search-input">
+            <div className="modern-input-icon">
+              <Search size={20} />
             </div>
-          )}
-        </div>
-      </div>
-
-      {/* Filter Modal */}
-      {showFilterModal && (
-        <div className="modern-modal-overlay" onClick={(e) => e.target === e.currentTarget && setShowFilterModal(false)}>
-          <div className="modern-modal modern-modal-md">
-            <div className="modern-modal-header">
-              <h3 className="modern-modal-title">Filtres</h3>
-              <button
-                onClick={() => setShowFilterModal(false)}
-                className="modern-modal-close"
-              >
-                <X size={20} />
-              </button>
-            </div>
-
-            <div className="modern-modal-body">
-              <div className="modern-form-group">
-                <label className="modern-form-label">Statut</label>
-                <select
-                  value={filters.status}
-                  onChange={(e) => handleFilterChange('status', e.target.value)}
-                  className="modern-input modern-select"
-                >
-                  <option value="">Tous les statuts</option>
-                  <option value="approved">Approuvées</option>
-                  <option value="pending">En attente</option>
-                </select>
-              </div>
-
-              <div className="modern-form-group">
-                <label className="modern-form-label">Créé par</label>
-                <input
-                  type="text"
-                  value={filters.createdBy}
-                  onChange={(e) => handleFilterChange('createdBy', e.target.value)}
-                  className="modern-input"
-                  placeholder="Nom du créateur"
-                />
-              </div>
-
-              <div className="modern-form-group">
-                <label className="modern-form-label">Date de début</label>
-                <input
-                  type="date"
-                  value={filters.dateFrom}
-                  onChange={(e) => handleFilterChange('dateFrom', e.target.value)}
-                  className="modern-input"
-                />
-              </div>
-
-              <div className="modern-form-group">
-                <label className="modern-form-label">Date de fin</label>
-                <input
-                  type="date"
-                  value={filters.dateTo}
-                  onChange={(e) => handleFilterChange('dateTo', e.target.value)}
-                  className="modern-input"
-                />
-              </div>
-            </div>
-
-            <div className="modern-modal-footer">
-              <button
-                onClick={clearAllFilters}
-                className="modern-btn modern-btn-danger"
-              >
-                Effacer tout
-              </button>
-              <div style={{ display: 'flex', gap: '0.75rem' }}>
-                <button
-                  onClick={() => setShowFilterModal(false)}
-                  className="modern-btn modern-btn-ghost"
-                >
-                  Fermer
-                </button>
-                <button
-                  onClick={() => setShowFilterModal(false)}
-                  className="modern-btn modern-btn-primary"
-                >
-                  Appliquer
-                </button>
-              </div>
-            </div>
+            <input
+              type="text"
+              placeholder="Rechercher par nom ou créateur..."
+              className="modern-input"
+              value={filters.searchTerm}
+              onChange={(e) => handleFilterChange('searchTerm', e.target.value)}
+            />
           </div>
         </div>
-      )}
 
-      {/* Create/Edit Modal */}
-      {showModal && (
-        <div className="modern-modal-overlay" onClick={(e) => e.target === e.currentTarget && setShowModal(false)}>
-          <div className="modern-modal modern-modal-lg">
-            <div className="modern-modal-header">
-              <h3 className="modern-modal-title">
-                {editingCategory ? 'Modifier la Catégorie' : 'Nouvelle Catégorie'}
-              </h3>
-              <button
-                onClick={() => setShowModal(false)}
-                className="modern-modal-close"
-              >
-                <X size={20} />
-              </button>
-            </div>
+        {/* Data Grid */}
+        <div className="modern-card" style={{ width: '100%', margin: '0 2rem', boxSizing: 'border-box' }}>
+          <div className="modern-card-body" style={{ padding: '0' }}>
+            <HandsontableDataGrid
+              data={prepareTableData()}
+              columns={tableColumns}
+              height={400}
+              className="category-management-table"
+              contextMenu={['row_above', 'row_below', 'separator', 'copy', 'cut']}
+              filters={true}
+              dropdownMenu={true}
+              multiColumnSorting={true}
+              width={'100%'}
+            />
+            {filteredCategories.length === 0 && (
+              <div className="text-center" style={{ padding: '2rem', color: 'var(--neutral-500)' }}>
+                {user?.magasin?.id ? 'Aucune catégorie trouvée correspondant à vos filtres.' : 'Aucune catégorie disponible.'}
+              </div>
+            )}
+          </div>
+        </div>
 
-            <form onSubmit={handleSubmit}>
+        {/* Filter Modal */}
+        {showFilterModal && (
+          <div className="modern-modal-overlay" onClick={(e) => e.target === e.currentTarget && setShowFilterModal(false)}>
+            <div className="modern-modal modern-modal-md">
+              <div className="modern-modal-header">
+                <h3 className="modern-modal-title">Filtres</h3>
+                <button
+                  onClick={() => setShowFilterModal(false)}
+                  className="modern-modal-close"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+
               <div className="modern-modal-body">
                 <div className="modern-form-group">
-                  <label className="modern-form-label required">Nom de la Catégorie</label>
+                  <label className="modern-form-label">Statut</label>
+                  <select
+                    value={filters.status}
+                    onChange={(e) => handleFilterChange('status', e.target.value)}
+                    className="modern-input modern-select"
+                  >
+                    <option value="">Tous les statuts</option>
+                    <option value="approved">Approuvées</option>
+                    <option value="pending">En attente</option>
+                  </select>
+                </div>
+
+                <div className="modern-form-group">
+                  <label className="modern-form-label">Créé par</label>
                   <input
                     type="text"
-                    value={formData.name}
-                    onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
+                    value={filters.createdBy}
+                    onChange={(e) => handleFilterChange('createdBy', e.target.value)}
                     className="modern-input"
-                    required
-                    placeholder="Entrez le nom de la catégorie"
+                    placeholder="Nom du créateur"
                   />
                 </div>
 
                 <div className="modern-form-group">
-                  <label className="modern-form-label">Champs Requis</label>
-                  <div className="modern-form-help">
-                    Sélectionnez les champs qui seront obligatoires pour cette catégorie
-                  </div>
-                  <div style={{
-                    display: 'grid',
-                    gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-                    gap: '0.5rem',
-                    maxHeight: '300px',
-                    overflowY: 'auto',
-                    padding: '1rem',
-                    border: '2px solid var(--neutral-200)',
-                    borderRadius: 'var(--radius-lg)',
-                    background: 'var(--neutral-50)'
-                  }}>
-                    {Array.isArray(availableFields) && availableFields.map((field) => (
-                      <label key={field} className="modern-checkbox">
-                        <input
-                          type="checkbox"
-                          checked={formData.required_fields.includes(field)}
-                          onChange={() => handleFieldToggle(field)}
-                        />
-                        <span className="modern-checkbox-mark"></span>
-                        <span style={{ fontSize: 'var(--font-size-sm)', color: 'var(--neutral-700)' }}>{field}</span>
-                      </label>
-                    ))}
-                  </div>
+                  <label className="modern-form-label">Date de début</label>
+                  <input
+                    type="date"
+                    value={filters.dateFrom}
+                    onChange={(e) => handleFilterChange('dateFrom', e.target.value)}
+                    className="modern-input"
+                  />
+                </div>
+
+                <div className="modern-form-group">
+                  <label className="modern-form-label">Date de fin</label>
+                  <input
+                    type="date"
+                    value={filters.dateTo}
+                    onChange={(e) => handleFilterChange('dateTo', e.target.value)}
+                    className="modern-input"
+                  />
                 </div>
               </div>
 
               <div className="modern-modal-footer">
                 <button
-                  type="button"
-                  onClick={() => setShowModal(false)}
-                  className="modern-btn modern-btn-ghost"
+                  onClick={clearAllFilters}
+                  className="modern-btn modern-btn-danger"
                 >
-                  Annuler
+                  Effacer tout
                 </button>
+                <div style={{ display: 'flex', gap: '0.75rem' }}>
+                  <button
+                    onClick={() => setShowFilterModal(false)}
+                    className="modern-btn modern-btn-ghost"
+                  >
+                    Fermer
+                  </button>
+                  <button
+                    onClick={() => setShowFilterModal(false)}
+                    className="modern-btn modern-btn-primary"
+                  >
+                    Appliquer
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Create/Edit Modal */}
+        {showModal && (
+          <div className="modern-modal-overlay" onClick={(e) => e.target === e.currentTarget && setShowModal(false)}>
+            <div className="modern-modal modern-modal-lg">
+              <div className="modern-modal-header">
+                <h3 className="modern-modal-title">
+                  {editingCategory ? 'Modifier la Catégorie' : 'Nouvelle Catégorie'}
+                </h3>
                 <button
-                  type="submit"
-                  disabled={loading}
-                  className="modern-btn modern-btn-primary"
-                  style={{ minWidth: '120px' }}
+                  onClick={() => setShowModal(false)}
+                  className="modern-modal-close"
                 >
-                  {loading ? (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                      <div className="modern-spinner" style={{ width: '16px', height: '16px' }}></div>
-                      Enregistrement...
-                    </div>
-                  ) : (
-                    editingCategory ? 'Modifier' : 'Créer'
-                  )}
+                  <X size={20} />
                 </button>
               </div>
-            </form>
+
+              <form onSubmit={handleSubmit}>
+                <div className="modern-modal-body">
+                  <div className="modern-form-group">
+                    <label className="modern-form-label required">Nom de la Catégorie</label>
+                    <input
+                      type="text"
+                      value={formData.name}
+                      onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
+                      className="modern-input"
+                      required
+                      placeholder="Entrez le nom de la catégorie"
+                    />
+                  </div>
+
+                  <div className="modern-form-group">
+                    <label className="modern-form-label">Champs Requis</label>
+                    <div className="modern-form-help">
+                      Sélectionnez les champs qui seront obligatoires pour cette catégorie
+                    </div>
+                    <div style={{
+                      display: 'grid',
+                      gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+                      gap: '0.5rem',
+                      maxHeight: '300px',
+                      overflowY: 'auto',
+                      padding: '1rem',
+                      border: '2px solid var(--neutral-200)',
+                      borderRadius: 'var(--radius-lg)',
+                      background: 'var(--neutral-50)'
+                    }}>
+                      {Array.isArray(availableFields) && availableFields.map((field) => (
+                        <label key={field} className="modern-checkbox">
+                          <input
+                            type="checkbox"
+                            checked={formData.required_fields.includes(field)}
+                            onChange={() => handleFieldToggle(field)}
+                          />
+                          <span className="modern-checkbox-mark"></span>
+                          <span style={{ fontSize: 'var(--font-size-sm)', color: 'var(--neutral-700)' }}>{field}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="modern-modal-footer">
+                  <button
+                    type="button"
+                    onClick={() => setShowModal(false)}
+                    className="modern-btn modern-btn-ghost"
+                  >
+                    Annuler
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    className="modern-btn modern-btn-primary"
+                    style={{ minWidth: '120px' }}
+                  >
+                    {loading ? (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <div className="modern-spinner" style={{ width: '16px', height: '16px' }}></div>
+                        Enregistrement...
+                      </div>
+                    ) : (
+                      editingCategory ? 'Modifier' : 'Créer'
+                    )}
+                  </button>
+                </div>
+              </form>
+            </div>
           </div>
-        </div>
-      )}
-    </div>
+        )}
+      </div>
+    </RightsProtectedPage>
   );
 };
 

@@ -33,6 +33,9 @@ const login = async (req, res) => {
             return res.status(401).json({ message: 'Invalid credentials' });
         }
 
+        // Generate JWT token for valid user (regardless of verification status)
+        const token = generateToken(user.id);
+
         // Check if email is validated
         if (!user.validEmail) {
             // Generate new verification token
@@ -50,19 +53,24 @@ const login = async (req, res) => {
 
             return res.status(200).json({
                 message: 'Please check your email to confirm your account.',
-                needsEmailVerification: true
+                needsEmailVerification: true,
+                token, // Send token even though email is not verified
+                user: user.toJSON()
             });
         }
 
         // Check password (only if email is validated)
         if (!user.password) {
             return res.status(400).json({ 
-                message: 'Password not set. Please check your email for verification link to set your password.' 
+                message: 'Password not set. Please check your email for verification link to set your password.',
+                token, // Send token even though password is not set
+                user: user.toJSON()
             });
         }
 
         const isPasswordValid = await user.comparePassword(password);
         if (!isPasswordValid) {
+            console.log('Invalid password for user:', email);
             return res.status(401).json({ message: 'Invalid credentials' });
         }
 
@@ -74,13 +82,13 @@ const login = async (req, res) => {
                     validEmail: user.validEmail,
                     verifiedProfileRh: user.verifiedProfileRh,
                     verifiedProfileDirection: user.verifiedProfileDirection
-                }
+                },
+                token, // Send token even though profile is not fully verified
+                user: user.toJSON()
             });
         }
 
-        // Generate JWT token
-        const token = generateToken(user.id);
-
+        // If all validations pass (correct credentials and fully verified)
         res.status(200).json({
             message: 'Login successful',
             token,

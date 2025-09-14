@@ -111,10 +111,10 @@ function App() {
           path="/email-verification"
           element={<EmailVerificationPage user={user} />}
         />
-        <Route
-          path="/verify-email/:token"
-          element={<PasswordCreationPage user={user} />}
-        />
+    <Route
+  path="/verify-email/:token"
+  element={<PasswordCreationPage />} // Remove the user prop
+/>
         <Route
           path="/dashboard"
           element={
@@ -138,7 +138,7 @@ function App() {
         />
 
         {/* Stock management routes only if user.magasin_id is valid */}
-        {hasValidMagasinId(user) && (
+        {
           <>
             <Route path="/stock/magasins" element={
               <ProtectedRoute>
@@ -207,7 +207,7 @@ function App() {
               }
             />
           </>
-        )}
+        }
 
         {/* These routes are not part of "gestion de stock" and are always available */}
         <Route path="/admin/Posts" element={

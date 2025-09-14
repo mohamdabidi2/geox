@@ -8,9 +8,12 @@ router.get('/magasin/:magasinId', async (req, res) => {
   try {
     connection = await db.pool.getConnection();
     const [rows] = await connection.execute(`
-      SELECT c.*, m.name as magasin_name, m.responsable as magasin_responsable
+      SELECT c.*, 
+             m.name as magasin_name,
+             CONCAT(u.firstname, ' ', u.lastname) as magasin_responsable
       FROM categories c
       JOIN magasins m ON c.magasin_id = m.id
+      LEFT JOIN users u ON m.responsable_id = u.id
       WHERE c.magasin_id = ?
       ORDER BY c.created_at DESC
     `, [req.params.magasinId]);
@@ -35,9 +38,12 @@ router.get('/:id', async (req, res) => {
   try {
     connection = await db.pool.getConnection();
     const [rows] = await connection.execute(`
-      SELECT c.*, m.name as magasin_name, m.responsable as magasin_responsable
+      SELECT c.*, 
+             m.name as magasin_name,
+             CONCAT(u.firstname, ' ', u.lastname) as magasin_responsable
       FROM categories c
       JOIN magasins m ON c.magasin_id = m.id
+      LEFT JOIN users u ON m.responsable_id = u.id
       WHERE c.id = ?
     `, [req.params.id]);
     
@@ -118,7 +124,7 @@ router.patch('/:id/approval', async (req, res) => {
     
     // Check if the category exists and get magasin info
     const [categoryRows] = await connection.execute(`
-      SELECT c.*, m.responsable as magasin_responsable
+      SELECT c.*, m.responsable_id
       FROM categories c
       JOIN magasins m ON c.magasin_id = m.id
       WHERE c.id = ?
@@ -129,7 +135,13 @@ router.patch('/:id/approval', async (req, res) => {
     }
     
     // Verify that the approver is the magasin responsable
-    if (categoryRows[0].magasin_responsable !== approved_by) {
+    // We need to check if the approved_by user ID matches the magasin's responsable_id
+    const [userRows] = await connection.execute(
+      'SELECT id FROM users WHERE id = ? AND id = ?',
+      [approved_by, categoryRows[0].responsable_id]
+    );
+    
+    if (userRows.length === 0) {
       return res.status(403).json({ error: 'Only magasin responsable can approve categories' });
     }
     

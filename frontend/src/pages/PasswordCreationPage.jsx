@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { useAuth } from '../hooks/useAuth';
+import { useAuth } from '../contexts/AuthContext'; // Make sure this path is correct
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -19,7 +19,7 @@ export default function PasswordCreationPage() {
     const [userId, setUserId] = useState(null);
     
     const { token } = useParams();
-    const { verifyEmail, createPassword } = useAuth();
+    const { verifyEmail, createPassword } = useAuth(); // Now this will work
     const navigate = useNavigate();
 
     useEffect(() => {

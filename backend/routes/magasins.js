@@ -206,19 +206,37 @@ router.delete('/:id', async (req, res) => {
 // Get available fields for a magasin
 router.get('/:id/fields', async (req, res) => {
   try {
-    const [rows] = await db.pool.execute('SELECT available_fields FROM magasins WHERE id = ?', [req.params.id]);
+    const [rows] = await db.pool.execute(
+      'SELECT available_fields FROM magasins WHERE id = ?', 
+      [req.params.id]
+    );
     
     if (rows.length === 0) {
       return res.status(404).json({ error: 'Magasin not found' });
     }
     
-    const fields = JSON.parse(rows[0].available_fields || '[]');
+    // Meilleure gestion des cas où available_fields pourrait être null ou vide
+    let fields = [];
+    const availableFields = rows[0].available_fields;
+    
+    if (availableFields) {
+      try {
+        fields = JSON.parse(availableFields);
+        // S'assurer que fields est toujours un tableau
+        if (!Array.isArray(fields)) {
+          fields = [];
+        }
+      } catch (parseError) {
+        console.error('Error parsing available_fields JSON:', parseError);
+        fields = [];
+      }
+    }
+    
     res.json({ fields });
   } catch (error) {
     console.error('Error fetching magasin fields:', error);
     res.status(500).json({ error: 'Failed to fetch magasin fields' });
   }
 });
-
 module.exports = router;
 
